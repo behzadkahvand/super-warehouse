@@ -1,0 +1,9 @@
+nelmio_api_doc:
+    documentation:
+        info:
+            title: Warehouse
+            description: It is timcheh's warehouse panel!
+            version: 1.0.0
+    areas: # to filter documented areas
+        default:
+            path_patterns: [^/admin]

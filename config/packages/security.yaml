@@ -1,0 +1,44 @@
+security:
+    enable_authenticator_manager: true
+
+    password_hashers:
+        App\Entity\Admin:
+            algorithm: auto
+
+    providers:
+        users_in_memory: { memory: null }
+        app_admin_provider:
+            entity:
+                class: App\Entity\Admin
+                property: email
+    firewalls:
+        admin:
+            pattern: ^/admin
+            provider: app_admin_provider
+            stateless: true
+            jwt: ~
+            json_login:
+                check_path: /admin/security/login
+                success_handler: lexik_jwt_authentication.handler.authentication_success
+                failure_handler: lexik_jwt_authentication.handler.authentication_failure
+        dev:
+            pattern: ^/((_(profiler|wdt)|css|images|js)/|doc/?)
+            security: false
+
+        main:
+            pattern: ^/
+            stateless: true
+            provider: app_admin_provider
+            jwt: ~
+
+            # activate different ways to authenticate
+            # https://symfony.com/doc/current/security.html#firewalls-authentication
+
+            # https://symfony.com/doc/current/security/impersonating_user.html
+            # switch_user: true
+
+    # Easy way to control access for large sections of your site
+    # Note: Only the *first* access control that matches will be used
+    access_control:
+         - { path: ^/security/token/refresh, roles: PUBLIC_ACCESS }
+         - { path: ^/admin, roles: ROLE_ADMIN }

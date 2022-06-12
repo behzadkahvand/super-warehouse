@@ -1,0 +1,86 @@
+framework:
+    messenger:
+        default_bus: command.bus
+        # Uncomment this (and the failed transport below) to send failed messages to this transport for later handling.
+        failure_transport: failed_warehouse
+
+        transports:
+            async_warehouse:
+                dsn: '%env(MESSENGER_TRANSPORT_DSN)%'
+                serializer: 'messenger.transport.async_message_serializer'
+                retry_strategy:
+                    max_retries: 10
+                    delay: 2000
+                options:
+#                    queue_name: 'async_warehouse'
+                    exchange:
+                        name: async_warehouse
+                        type: direct
+                        default_publish_routing_key: normal
+                    queues:
+                        async_warehouse_normal:
+                            binding_keys: [ normal ]
+            failed_warehouse:
+                dsn: '%env(MESSENGER_TRANSPORT_DSN)%'
+                retry_strategy:
+                    max_retries: 50
+                options:
+#                    queue_name: 'failed_warehouse'
+#                    table_name: failed_messages
+                    exchange:
+                        type: direct
+                        name: failed
+                        default_publish_routing_key: failed_warehouse
+                    queues:
+                        messages_failed_warehouse:
+                            binding_keys: [ failed_warehouse ]
+            item_serial_warehouse:
+                dsn: '%env(MESSENGER_TRANSPORT_DSN)%'
+                retry_strategy:
+                    max_retries: 10
+                    delay: 2000
+                options:
+#                    queue_name: 'item_serial_warehouse'
+                    exchange:
+                        name: item_serial_warehouse
+                        type: direct
+                        default_publish_routing_key: normal
+                    queues:
+                        item_serial_warehouse_normal:
+                            binding_keys: [ normal ]
+            logger_warehouse:
+                dsn: '%env(MESSENGER_TRANSPORT_DSN)%'
+                retry_strategy:
+                    max_retries: 10
+                    delay: 2000
+                options:
+#                    queue_name: 'logger_warehouse'
+                    exchange:
+                        name: logger_warehouse
+                        type: direct
+                        default_publish_routing_key: normal
+                    queues:
+                        logger_warehouse_normal:
+                            binding_keys: [ normal ]
+
+        routing:
+            'App\Messaging\Messages\Command\Async\AsyncMessage': async_warehouse
+            'App\Messaging\Messages\Command\ItemSerial\AddSerialToItemSerial': item_serial_warehouse
+            'App\Messaging\Messages\Command\ItemBatch\ItemBatchTransactionMessage': logger_warehouse
+            'App\Messaging\Messages\Command\ItemSerial\ItemSerialTransactionMessage': logger_warehouse
+
+        buses:
+            command.bus:
+                middleware:
+                    - app.messenger.middleware.set_event_bus_name_middleware
+                    - doctrine_ping_connection
+                    - doctrine_close_connection
+            event.bus:
+                default_middleware: allow_no_handlers
+                middleware:
+                    - app.messenger.middleware.set_command_bus_name_middleware
+                    - App\Messaging\Middlewares\Event\UniqueIdMiddleware
+                    - App\Messaging\Middlewares\Event\EventStoreMiddleware
+                    - App\Messaging\Middlewares\Event\LogStoreMiddleware
+                    - doctrine_ping_connection
+                    - doctrine_close_connection

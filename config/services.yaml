@@ -1,0 +1,205 @@
+parameters:
+  default_item_serial_min_length: 6
+  env(MONGODB_URL): ''
+  env(MONGODB_DB): ''
+  refresh_token_ttl: "%env(int:JWT_REFRESH_TOKEN_TTL)%"
+  throwable_metadata_factory_file: '%kernel.project_dir%/src/Service/ExceptionHandler/ThrowableMetadataFactoryList.php'
+services:
+  _defaults:
+    autowire: true
+    autoconfigure: true
+    bind:
+      $projectDirectory: '%kernel.project_dir%'
+      $binTemplate: '%env(WAREHOUSE_STORAGE_BIN_TEMPLATE)%'
+      $isExceptionHandlerEnable: '%env(ENABLE_EXCEPTION_HANDLER)%'
+
+  App\:
+    resource: '../src/'
+    exclude:
+      - '../src/DependencyInjection/'
+      - '../src/Entity/'
+      - '../src/{DTO,Exceptions,Messaging/Messages/Command}'
+      - '../src/**/{DTO,Exceptions,ValueObject*}/**'
+      - '../src/Kernel.php'
+      - '../src/Tests/'
+      - '%throwable_metadata_factory_file%'
+      - '../src/Service/Utils/functions.php'
+
+  App\Messaging\Handlers\Command\:
+    resource: '../src/Messaging/Handlers/Command'
+    autoconfigure: false
+    tags: [ { name: messenger.message_handler, bus: command.bus } ]
+
+  App\Messaging\Handlers\Event\:
+    resource: '../src/Messaging/Handlers/Event'
+    autoconfigure: false
+    tags: [ { name: messenger.message_handler, bus: event.bus } ]
+
+  messenger.transport.async_message_serializer:
+    class: App\Messaging\Serializers\Command\Async\AsyncMessageSerializer
+    arguments:
+      $serializer: '@messenger.transport.native_php_serializer'
+
+  app.messenger.transport.integration_event_serializer:
+    class: App\Messaging\Serializers\Event\Integration\IntegrationEventSerializer
+    arguments:
+      $serializer: '@messenger.transport.symfony_serializer'
+      $integrationMessages: !tagged { tag: app.messenger.messages.event.integration.consumer }
+
+  app.messenger.middleware.set_event_bus_name_middleware:
+    class: App\Messaging\Middlewares\Command\SetEventBusNameMiddleware
+
+  app.messenger.middleware.set_command_bus_name_middleware:
+    class: App\Messaging\Middlewares\Event\SetCommandBusNameMiddleware
+
+  App\Controller\:
+    resource: '../src/Controller/'
+    tags: ['controller.service_arguments']
+
+  App\Listeners\Authentication\AuthenticationListener:
+    arguments:
+      $expireTime: '%env(int:TOKEN_EXPIRE_TIME)%'
+      $refreshTokenTtl: "%refresh_token_ttl%"
+
+  App\Service\ItemSerial\Serial\ItemSerialListener:
+    tags:
+      - { name: 'doctrine.orm.entity_listener', event: 'postPersist', entity: 'App\Entity\ItemSerial', method: 'onItemSerialPostPersist' }
+
+  App\Service\ORM\QueryBuilderFilterService:
+    arguments:
+      $collectionExtensions: !tagged_iterator { tag: app.query_builder_filter_extension }
+
+  App\Service\Utils\Error\ErrorExtractor:
+    arguments:
+      $extractors: !tagged_iterator { tag: app.error_extractor }
+
+  App\Service\PullList\ReceiptItemAddList\ReceiptItemAddListService:
+    arguments:
+      $stages: !tagged_iterator { tag: app.pipeline_stage.pull_list.receipt_item.add_list, default_priority_method: getPriority }
+
+  App\Service\PickList\PickListService:
+    arguments:
+      $itemSerialFilters: !tagged_iterator { tag: app.pipeline_stage.pick_list.create.item, default_priority_method: getPriority }
+
+  App\Service\Utils\SerialGenerator\SerialGeneratorService:
+    arguments:
+      $salt: "rkdkZUXxfxdFFOnowGyn"
+      $minHashLength: '%env(default:default_item_serial_min_length:ITEM_SERIAL_MIN_LENGTH)%'
+      $alphabet: "abcdefghijklmnopqrstuvwxyz1234567890"
+
+  App\Service\WarehouseStorageBin\AutoGenerate\AutoGenerateService:
+    arguments:
+      $handlers: !tagged_iterator { tag: app.warehouse_storage_bin.auto_generate.handler }
+
+  App\Service\WarehouseStorageBin\AutoGenerate\Handlers\AddHandler:
+    arguments:
+      $creators: !tagged_iterator { tag: app.warehouse_storage_bin.auto_generate.creator, default_priority_method: getPriority }
+
+  App\Service\WarehouseStorageBin\AutoGenerate\Handlers\EditHandler:
+    arguments:
+      $editors: !tagged_iterator { tag: app.warehouse_storage_bin.auto_generate.editor }
+
+  App\Service\ExceptionHandler\MetadataLoader:
+    arguments:
+      $metadataLoaders: !tagged_iterator { tag: app.exception_handler.metadata_loader, default_priority_method: getPriority }
+
+  App\Service\ExceptionHandler\Configurator\StaticListMetadataLoaderConfigurator:
+    arguments:
+      $metadataFactoryList: '%throwable_metadata_factory_file%'
+
+  App\Service\ExceptionHandler\Loaders\StaticListMetadataLoader:
+    configurator: [ '@App\Service\ExceptionHandler\Configurator\StaticListMetadataLoaderConfigurator', 'configure' ]
+
+  App\Listeners\SentryErrorListenerDecorator:
+    decorates: Sentry\SentryBundle\EventListener\ErrorListener
+    arguments:
+      - '@App\Listeners\SentryErrorListenerDecorator.inner'
+
+  Sentry\Integration\IgnoreErrorsIntegration:
+    arguments:
+      $options:
+        ignore_exceptions:
+          - 'Symfony\Component\HttpKernel\Exception\NotFoundHttpException'
+          - 'Symfony\Component\Security\Core\Exception\AccessDeniedException'
+          - 'Symfony\Component\Security\Core\Exception\AuthenticationCredentialsNotFoundException'
+
+  App\Service\SellerPackage\SellerPackageStatusService:
+    arguments:
+      $statuses: !tagged_iterator { tag: app.seller_package.seller_package_status_service }
+
+  App\Service\SellerPackageItem\SellerPackageItemStatusService:
+    arguments:
+      $statuses: !tagged_iterator { tag: app.seller_package_item.seller_package_item_status_service }
+
+  App\Service\Warehouse\WarehousePickingStrategyService:
+    arguments:
+      $strategies: !tagged_iterator { tag: app.warehouse.warehouse_picking_strategy_service }
+
+  App\Service\PickList\HandHeld\Picking\HandHeldPickingService:
+    arguments:
+      $resolvers: !tagged_iterator { tag: app.handHeld.picking_resolvers, default_priority_method: getPriority }
+
+  App\Service\PickList\BugReport\PickListBugReportStatusService:
+    arguments:
+      $statuses: !tagged_iterator { tag: app.pick_list.pick_list_bug_report_status_service }
+
+  App\Service\PullList\HandHeld\StowingProcess\StowingProcessService:
+    arguments:
+      $resolvers: !tagged_iterator { tag: app.handHeld.stowing_resolvers, default_priority_method: getPriority }
+
+  App\Service\PullList\HandHeld\StowingProcess\StowingStrategy\StowingStrategyCheckContext:
+    arguments:
+      $strategies: !tagged_iterator { tag: app.handHeld.stowing_strategy.check }
+
+  App\Service\PullList\HandHeld\StowingProcess\CapacityCheckMethods\CapacityMethodCheckContext:
+    arguments:
+      $strategies: !tagged_iterator { tag: app.handHeld.stowing.capacity_method.check }
+
+  App\Service\Relocate\Stowing\RelocateItemService:
+    arguments:
+      $resolvers: !tagged_iterator { tag: app.relocate.item_resolvers, default_priority_method: getPriority }
+
+  App\Service\Relocate\Stowing\RelocateBinService:
+    arguments:
+      $resolvers: !tagged_iterator { tag: app.relocate.bin_resolvers, default_priority_method: getPriority }
+
+  App\Service\Integration\Timcheh\LogStore\LogStoreContextService:
+    arguments:
+      $resolvers: !tagged_iterator { tag: app.integration.log_store.resolvers , default_priority_method: getPriority }
+
+  App\Service\MongoFilter\PipelineMongoQueryBuilder:
+    arguments:
+      $stages: !tagged_iterator { tag: app.pipeline_stage.mongo_query_builder, default_priority_method: getPriority }
+
+  App\Listeners\Integration\Timcheh\GIReceipt\GIReceiptStatusListener:
+    tags:
+      - { name: 'doctrine.orm.entity_listener', event: 'postUpdate', entity: 'App\Entity\GIShipmentReceipt', method: 'onPostUpdate' }
+
+  App\Listeners\Integration\Timcheh\Warehouse\WarehouseIntegrationListener:
+    tags:
+      - { name: 'doctrine.orm.entity_listener', event: 'postPersist', entity: 'App\Entity\Warehouse', method: 'onPostPersist' }
+      - { name: 'doctrine.orm.entity_listener', event: 'postUpdate', entity: 'App\Entity\Warehouse', method: 'onPostUpdate' }
+
+  App\Listeners\Integration\Timcheh\Product\ProductIntegrationListener:
+    tags:
+      - { name: 'doctrine.orm.entity_listener', event: 'postUpdate', entity: 'App\Entity\Product', method: 'onPostUpdate' }
+
+  App\Listeners\Integration\Timcheh\OrderItem\OrderItemIntegrationListener:
+    tags:
+      - { name: 'doctrine.orm.entity_listener', event: 'postUpdate', entity: 'App\Entity\ReceiptItem', method: 'onPostUpdate' }
+
+  App\Listeners\Integration\Timcheh\SellerPackage\SellerPackageIntegrationListener:
+    tags:
+      - { name: 'doctrine.orm.entity_listener', event: 'postUpdate', entity: 'App\Entity\SellerPackage', method: 'onPostUpdate' }
+
+  App\Listeners\Integration\Timcheh\SellerPackageItem\SellerPackageItemIntegrationListener:
+    tags:
+      - { name: 'doctrine.orm.entity_listener', event: 'postUpdate', entity: 'App\Entity\SellerPackageItem', method: 'onPostUpdate' }
+
+  App\Listeners\Integration\Timcheh\WarehouseStock\WarehouseStockIntegrationListener:
+    tags:
+      - { name: 'doctrine.orm.entity_listener', event: 'postUpdate', entity: 'App\Entity\WarehouseStock', method: 'onPostUpdate' }
+
+  App\Listeners\Integration\Timcheh\Shipment\ShipmentStatusIntegrationListener:
+    tags:
+      - { name: 'doctrine.orm.entity_listener', event: 'postUpdate', entity: 'App\Entity\Shipment', method: 'onPostUpdate' }

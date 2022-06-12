@@ -1,0 +1,65 @@
+framework:
+  messenger:
+    transports:
+      sw_ti_integration:
+        dsn: '%env(INTEGRATION_MESSENGER_TRANSPORT_DSN)%'
+        serializer: 'app.messenger.transport.integration_event_serializer'
+        retry_strategy:
+          max_retries: 10
+          delay: 2000
+        options:
+          exchange:
+            name: sw_ti_integration
+            type: direct
+            default_publish_routing_key: normal
+          queues:
+            sw_ti_integration_normal:
+              binding_keys: [ normal ]
+      sw_ti_integration_log:
+        dsn: '%env(INTEGRATION_MESSENGER_TRANSPORT_DSN)%'
+        serializer: 'app.messenger.transport.integration_event_serializer'
+        retry_strategy:
+          max_retries: 10
+          delay: 2000
+        options:
+          exchange:
+            name: sw_ti_integration_log
+            type: direct
+            default_publish_routing_key: normal
+          queues:
+            sw_ti_integration_log_normal:
+              binding_keys: [ normal ]
+      ti_sw_integration:
+        dsn: '%env(INTEGRATION_MESSENGER_TRANSPORT_DSN)%'
+        serializer: 'app.messenger.transport.integration_event_serializer'
+        retry_strategy:
+          max_retries: 10
+          delay: 2000
+        options:
+          exchange:
+            name: ti_sw_integration
+            type: direct
+            default_publish_routing_key: normal
+          queues:
+            ti_sw_integration_normal:
+              binding_keys: [ normal ]
+      ti_sw_integration_log:
+        dsn: '%env(INTEGRATION_MESSENGER_TRANSPORT_DSN)%'
+        serializer: 'app.messenger.transport.integration_event_serializer'
+        retry_strategy:
+          max_retries: 10
+          delay: 2000
+        options:
+          exchange:
+            name: ti_sw_integration_log
+            type: direct
+            default_publish_routing_key: normal
+          queues:
+            ti_sw_integration_log_normal:
+              binding_keys: [ normal ]
+
+    routing:
+      'App\Messaging\Messages\Event\Integration\Timcheh\ProducerAsyncMessageInterface': sw_ti_integration
+      'App\Messaging\Messages\Event\Integration\Timcheh\ProducerAsyncLogMessageInterface': sw_ti_integration_log
+      'App\Messaging\Messages\Event\Integration\Timcheh\ConsumerAsyncMessageInterface': ti_sw_integration
+      'App\Messaging\Messages\Event\Integration\Timcheh\ConsumerAsyncLogMessageInterface': ti_sw_integration_log
